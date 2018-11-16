@@ -10,6 +10,7 @@
 	===========================================================================
 	.REQUIREMENTS
 		MSONLINE Module (Install-Module MSOnline)
+			*Will install it automatically if not present
 	.DESCRIPTION
 		The PowerShell function will connect to your Office 365 and can re-create your Users, Groups, and Contacts in Active Directory. 
 		This is extremly helpful if you are looking to change your identity source from Office 365 to Active Directory and then have Active Directory sync up to Office 365.
@@ -30,27 +31,28 @@
 		- City
 		- Office Phone (telephone number)
 
-		MAIL CONTACTS ATTRIBUTES IT WILL COPY OVER
+		MAIL CONTACT ATTRIBUTES IT WILL COPY OVER
 		- Display Name
 		- External Email 
+		- Proxy Addresses
 		- First Name
 		- Last Name
 
-		DISTRIBUTION GROUPS ATTRIBUTES IT WILL COPY OVER
+		DISTRIBUTION GROUP ATTRIBUTES IT WILL COPY OVER
 		- Name
 		- Display Name
 		- Primary SmtpAddress 
 		- Description
 		- Members
 
-		MAIL-ENABLED SECURITY GROUPS ATTRIBUTES IT WILL COPY OVER
+		MAIL-ENABLED SECURITY GROUP ATTRIBUTES IT WILL COPY OVER
 		- Name
 		- Display Name
 		- Primary SmtpAddress 
 		- Description
 		- Members
 
-		SECURITY GROUPS ATTRIBUTES IT WILL COPY OVER
+		SECURITY GROUP ATTRIBUTES IT WILL COPY OVER
 		- Name
 		- Display Name
 		- Primary SmtpAddress 
@@ -121,10 +123,14 @@ function Sync-Office365ToADDS
 		[switch]$SyncContacts,
 		[Parameter(ParameterSetName = 'SyncContacts', Mandatory = $false)]
 		[string]$ContactsOU,
+		[Parameter(ParameterSetName = 'SyncContacts', Mandatory = $false)]
+		[switch]$DomainMoveContactsToOU,
 		[Parameter(ParameterSetName = 'SyncDistributionGroups')]
 		[switch]$SyncDistributionGroups,
 		[Parameter(ParameterSetName = 'SyncDistributionGroups', Mandatory = $false)]
 		[string]$DistributionGroupsOU,
+		[Parameter(ParameterSetName = 'SyncDistributionGroups', Mandatory = $false)]
+		[switch]$DomainMoveDistributionGroupsToOU,
 		[Parameter(ParameterSetName = 'SyncMailEnabledSecurityGroups')]
 		[switch]$SyncMailEnabledSecurityGroups,
 		[Parameter(ParameterSetName = 'SyncMailEnabledSecurityGroups', Mandatory = $false)]
@@ -287,13 +293,32 @@ function Sync-Office365ToADDS
 				Write-Host "$($MailContact.displayname) not found in Active Directory, creating..."
 				
 				Write-Host "Creating mail contact, '$($Mailcontact.DisplayName)'" -ForegroundColor Yellow
-				New-ADObject -name $mailcontact.displayname -DisplayName $mailcontact.displayname -type contact -OtherAttributes @{ 'mail' = $mailcontactexternalemail; 'givenName' = $Mailcontactfirstname; 'sn' = $Mailcontactlastname; }
+				New-ADObject -name $mailcontact.displayname -DisplayName $mailcontact.displayname -type contact -OtherAttributes @{ 'mail' = $mailcontactexternalemail; 'givenName' = $Mailcontactfirstname; 'sn' = $Mailcontactlastname; 'Proxyaddresses' = $mailcontactexternalemail }
 			}
 			$EContactUser = Get-ADObject -LDAPFilter "objectClass=Contact" | Where-Object { $_.Name -eq $mailcontact.DisplayName } -ErrorAction SilentlyContinue
 			If ($ContactsOU -like "*OU*")
 			{
 				Write-Host "Moving the contact, '$($MailContact.displayname)' to $ContactsOU"
 				Move-ADObject $EContactUser.ObjectGuid -TargetPath $ContactsOU
+			}
+			If ($DomainMoveContactsToOU -eq $true)
+			{
+				#Grab contacts domain based on external email address
+				Write-Host "Finding the External Email Address Domain for the contact, '$($Mailcontact.DisplayName)'"
+				$ContactsDomain = (($mailcontactexternalemail).Split("@") | Select-Object -Last 1).Split(".") | Select-Object -First 1
+				Write-Host "The domain is $ContactsDomain"
+				Write-Host "Finding an OU that contains $ContactsDomain"
+				$DynOU = (Get-ADOrganizationalUnit -Filter * | Where-Object { $_.Name -like "*$ContactsDomain*" } -ErrorAction SilentlyContinue).DistinguishedName
+				If ($null -eq $DynOU)
+				{
+					Write-Host "No OU was found to move $($Mailcontact.DisplayName) to. Contact will be at the default OU or at the forest root level"
+				}
+				Else
+				{
+					Write-Host "Moving $($Mailcontact.DisplayName) to $DynOU"
+					Move-ADObject $EContactUser.ObjectGuid -TargetPath $DynOU
+				}
+				
 			}
 			
 			
@@ -349,6 +374,27 @@ function Sync-Office365ToADDS
 					
 				}
 			}
+			
+			If ($DomainMoveDistributionGroupsToOU -eq $true)
+			{
+				#Grab Distribution Group domain based on external email address
+				Write-Host "Finding the External Email Address Domain for the Distribution Group, '$($Group.DisplayName)'"
+				$DistroGroupDomain = (($group.PrimarySmtpAddress).Split("@") | Select-Object -Last 1).Split(".") | Select-Object -First 1
+				Write-Host "The domain is $DistroGroupDomain"
+				Write-Host "Finding an OU that contains $DistroGroupDomain"
+				$DynOU = (Get-ADOrganizationalUnit -Filter * | Where-Object { $_.Name -like "*$DistroGroupDomain*" } -ErrorAction SilentlyContinue).DistinguishedName
+				If ($null -eq $DynOU)
+				{
+					Write-Host "No OU was found to move $($Group.DisplayName) to. Contact will be at the default Users OU"
+				}
+				Else
+				{
+					Write-Host "Moving $($Group.DisplayName) to $DynOU"
+					Get-ADGroup -identity $Group.DisplayName | Move-ADObject -TargetPath $DynOU
+				}
+				
+			}
+			
 			$GroupPresent = $null
 		}
 	}
