@@ -66,6 +66,9 @@
 	.PARAMETER PasswordForAllUsers
 		[string] Required if you use the SyncUsers switch. Specifies the password that will be set for all users that are created. Converts the plain text string to secure.string
 
+	PARAMETER DomainMoveUsersToOU
+		[switch] Optional. Will move users to an OU that matches the domain name in their UPN. If the UPN is thelazyadministrator.com it will find an OU with the name "thelazyadministrator" and move the user there. If the OU is not present it will keep the user in the default Users OU
+
 	.PARAMETER SyncContacts
 		[switch] Syncs Office 365 Mail Contacts to ADDS
 
@@ -110,6 +113,8 @@ function Sync-Office365ToADDS
 		[switch]$SyncUsers,
 		[Parameter(ParameterSetName = 'SyncUsers', Mandatory = $false)]
 		[string]$UsersOU,
+		[Parameter(ParameterSetName = 'SyncUsers', Mandatory = $false)]
+		[switch]$DomainMoveUsersToOU,
 		[Parameter(ParameterSetName = 'SyncUsers', Mandatory = $true)]
 		[string]$PasswordForAllUsers,
 		[Parameter(ParameterSetName = 'SyncContacts')]
@@ -228,6 +233,25 @@ function Sync-Office365ToADDS
 			{
 				Write-Host "Moving the user, '$($User.DisplayName)' to the OU at $UsersOU"
 				Move-ADObject -Identity $ADUser.ObjectGuid -TargetPath $UsersOU
+			}
+			If ($DomainMoveUsersOU -eq $true)
+			{
+				#Grab users UPN Domain
+				Write-Host "Finding the UPN Domain for the user, '$($User.DisplayName)'"
+				$UserUPNDomain = ((($User).UserPrincipalName).Split("@") | Select-Object -Last 1).Split(".") | Select-Object -First 1
+				Write-Host "The domain is $UserUPNDomain"
+				Write-Host "Finding an OU that contains $UserUPNDomain"
+				$DynOU = (Get-ADOrganizationalUnit -Filter * | Where-Object { $_.Name -like "*$UserUPNDomain*" } -ErrorAction SilentlyContinue).DistinguishedName
+				If ($null -eq $DynOU)
+				{
+					Write-Host "No OU was found to move $($User.DisplayName) to. User will be at the default user creation OU"
+				}
+				Else
+				{
+					Write-Host "Moving $($User.DisplayName) to $DynOU"
+					Move-ADObject -Identity $ADUser.ObjectGuid -TargetPath $DynOU
+				}
+				
 			}
 			
 			
