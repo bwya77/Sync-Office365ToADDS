@@ -1,5 +1,6 @@
 <#	
     #TODO: Add managed by for groups
+	#TODO: Check for member, if not write warning
 
 
 	.NOTES
@@ -135,6 +136,8 @@ function Sync-Office365ToADDS
 		[switch]$SyncMailEnabledSecurityGroups,
 		[Parameter(ParameterSetName = 'SyncMailEnabledSecurityGroups', Mandatory = $false)]
 		[string]$MailEnabledSecurityGroupsOU,
+		[Parameter(ParameterSetName = 'SyncMailEnabledSecurityGroups', Mandatory = $false)]
+		[switch]$DomainMoveMailEnabledSecurityGroupsToOU,
 		[Parameter(ParameterSetName = 'SyncSecurityGroups')]
 		[switch]$SyncSecurityGroups,
 		[Parameter(ParameterSetName = 'SyncSecurityGroups', Mandatory = $false)]
@@ -369,9 +372,14 @@ function Sync-Office365ToADDS
 					Write-Host "Adding $($Member.Name) to the group, '$($Group.Name)'"
 					
 					$AddMember = Get-ADObject -Filter * | Where-Object { $_.Name -eq $member.DisplayName }
-					
-					Set-ADGroup -identity $Group.DisplayName -add @{ 'member' = $AddMember.DistinguishedName }
-					
+					If ($AddMember -eq $null)
+					{
+						Write-Warning "$($Member.Name) was not found in Active Directory and could not be added as a member to $($Group.DisplayName)"
+					}
+					Else
+					{
+						Set-ADGroup -identity $Group.DisplayName -add @{ 'member' = $AddMember.DistinguishedName }
+					}
 				}
 			}
 			
@@ -438,11 +446,37 @@ function Sync-Office365ToADDS
 				Write-Host "Adding $($Member.Name) to the group, '$($MailEnabledSecurityGroup.Name)'"
 				
 				$AddMember = Get-ADObject -Filter * | Where-Object { $_.Name -eq $member.DisplayName }
-				
-				Set-ADGroup -identity $MailEnabledSecurityGroup.DisplayName -add @{ 'member' = $AddMember.DistinguishedName }
-				
+				If ($AddMember -eq $null)
+				{
+					Write-Warning "$($Member.Name) was not found in Active Directory and could not be added as a member to $($MailEnabledSecurityGroup.DisplayName)"
+				}
+				Else
+				{
+					Set-ADGroup -identity $MailEnabledSecurityGroup.DisplayName -add @{ 'member' = $AddMember.DistinguishedName }
+				}
 				
 			}
+			
+			If ($DomainMoveMailEnabledSecurityGroupsToOU -eq $true)
+			{
+				#Grab Mail Enabled Security Group domain based on external email address
+				Write-Host "Finding the External Email Address Domain for the Mail Enabled Security Group, '$($MailEnabledSecurityGroup.DisplayName)'"
+				$MailEnabledSecurityGroupDomain = (($MailEnabledSecurityGroup.PrimarySmtpAddress).Split("@") | Select-Object -Last 1).Split(".") | Select-Object -First 1
+				Write-Host "The domain is $MailEnabledSecurityGroupDomain"
+				Write-Host "Finding an OU that contains $MailEnabledSecurityGroupDomain"
+				$DynOU = (Get-ADOrganizationalUnit -Filter * | Where-Object { $_.Name -like "*$MailEnabledSecurityGroupDomain*" } -ErrorAction SilentlyContinue).DistinguishedName
+				If ($null -eq $DynOU)
+				{
+					Write-Host "No OU was found to move $($MailEnabledSecurityGroup.DisplayName) to. Contact will be at the default Users OU"
+				}
+				Else
+				{
+					Write-Host "Moving $($MailEnabledSecurityGroup.DisplayName) to $DynOU"
+					Get-ADGroup -identity $MailEnabledSecurityGroup.DisplayName | Move-ADObject -TargetPath $DynOU
+				}
+				
+			}
+			
 			$GroupPresent = $null
 		}
 	}
@@ -488,9 +522,14 @@ function Sync-Office365ToADDS
 				Write-Host "Adding $($Member.DisplayName) to the group, '$($SecurityGroup.DisplayName)'"
 				
 				$AddMember = Get-ADObject -Filter * | Where-Object { $_.Name -eq $member.DisplayName }
-				
-				Set-ADGroup -identity $SecurityGroup.DisplayName -add @{ 'member' = $AddMember.DistinguishedName }
-				
+				If ($AddMember -eq $null)
+				{
+					Write-Warning "$($Member.Name) was not found in Active Directory and could not be added as a member to $($SecurityGroup.DisplayName)"
+				}
+				Else
+				{
+					Set-ADGroup -identity $SecurityGroup.DisplayName -add @{ 'member' = $AddMember.DistinguishedName }
+				}
 				
 			}
 		}
