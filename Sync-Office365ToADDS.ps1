@@ -1,9 +1,4 @@
 <#	
-    #TODO: Add managed by for groups
-	#TODO: Check for member, if not write warning
-    #check if azuread is connected or msonline, if so skip
-
-
 	.NOTES
 	===========================================================================
 	 Created on:   	11/15/2018 11:56 AM
@@ -46,6 +41,7 @@
 		- Primary SmtpAddress 
 		- Description
 		- Members
+		- Group Owner (Managed By)
 
 		MAIL-ENABLED SECURITY GROUP ATTRIBUTES IT WILL COPY OVER
 		- Name
@@ -132,6 +128,16 @@ function Sync-Office365ToADDS
 		[switch]$SyncSecurityGroups,
 		[string]$SecurityGroupsOU
 	)
+	
+	function Connect-O365
+	{
+		$UserCredential = Get-Credential
+		$Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri "https://ps.outlook.com/powershell/" -Credential $UserCredential -Authentication Basic -AllowRedirection
+		Import-PSSession $Session
+		Connect-MsolService -Credential $UserCredential
+	}
+	
+	
 	If ($SyncUsers -eq $True)
 	{
 		Do
@@ -142,41 +148,44 @@ function Sync-Office365ToADDS
 		Until (($PasswordForAllUsers).Length -gt 0)
 	}
 	
-	Write-Host "Checking to see if MSOnline Module is present" -ForegroundColor Green
-	$MSOnlineCheck = get-module | Where-object { $_.name -like "*msonline*" }
-	If ($Null -eq $MSOnlineCheck)
+	
+	$AzureConnect = Get-AzureADTenantDetail -ErrorAction SilentlyContinue
+	If ($AzureConnect -eq $null)
 	{
-		Write-Warning "MSOnline module is not present, attempting to install it"
-		Install-Module Msonline -Force
+		
+		Write-Host "Checking to see if AzureAD Module is present" -ForegroundColor Green
+		$AzureADCheck = get-module -ListAvailable | Where-object { $_.name -like "*azuread*" }
+		If ($Null -eq $AzureADCheck)
+		{
+			Write-Warning "AzureAd module is not present, attempting to install it"
+			Install-Module AzureAd -Force
+			
+		}
+		Write-Host "Importing AzureAd Module"
+		Import-Module AzureAd
+		
+		Write-Host "Connecting to AzureAd"
+		Connect-AzureAD
+	}
+	
+	$MSOnlineConnect = Get-MsolCompanyInformation -ErrorAction SilentlyContinue
+	If ($MSOnlineConnect -eq $null)
+	{
+		Write-Host "Checking to see if MSOnline Module is present" -ForegroundColor Green
+		$MSOnlineCheck = get-module -ListAvailable | Where-object { $_.name -like "*msonline*" }
+		If ($Null -eq $MSOnlineCheck)
+		{
+			Write-Warning "MSOnline module is not present, attempting to install it"
+			Install-Module Msonline -Force
+			
+		}
+		Write-Host "Importing MSOnline Module"
+		Import-Module MSOnline
+		
+		Write-Host "Connecting to MSOnline" -ForegroundColor DarkMagenta
+		Connect-O365
 		
 	}
-	Write-Host "Importing MSOnline Module"
-	Import-Module MSOnline
-	
-	Write-Host "Checking to see if AzureAD Module is present" -ForegroundColor Green
-	$MSOnlineCheck = get-module | Where-object { $_.name -like "*azuread*" }
-	If ($Null -eq $MSOnlineCheck)
-	{
-		Write-Warning "AzureAd module is not present, attempting to install it"
-		Install-Module AzureAd -Force
-		
-	}
-	Write-Host "Importing AzureAd Module"
-	Import-Module AzureAd
-	
-	function Connect-O365
-	{
-		$UserCredential = Get-Credential
-		$Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri "https://ps.outlook.com/powershell/" -Credential $UserCredential -Authentication Basic -AllowRedirection
-		Import-PSSession $Session
-		Connect-MsolService -Credential $UserCredential
-	}
-	
-	Write-Host "Connecting to MSOnline" -ForegroundColor DarkMagenta
-	#Connect-O365
-	
-	Write-Host "Connecting to AzureAd"
-	#Connect-AzureAD
 	
 	Write-Host "###############################" -ForegroundColor Green
 	Write-Host "#         DOMAINS             #" -ForegroundColor Green
@@ -335,10 +344,7 @@ function Sync-Office365ToADDS
 					Write-Host "Moving $($Mailcontact.DisplayName) to $DynOU"
 					Move-ADObject $EContactUser.ObjectGuid -TargetPath $DynOU
 				}
-				
 			}
-			
-			
 			$EContactUser = $null
 		}
 	}
@@ -397,6 +403,28 @@ function Sync-Office365ToADDS
 				}
 			}
 			
+			Write-Host "Getting Owner of the Distribution Group, '$($Group.DisplayName)'"
+			$GroupOwner = Get-MsolGroup -ObjectId $Group.ExternalDirectoryObjectId | Select-Object @{ n = "ManagedBy"; e = { (Get-MsolUser -ObjectId (Get-MsolGroup -ObjectId $_.ObjectId).ManagedBy).UserPrincipalName } } | Select-Object -ExpandProperty ManagedBy
+			Write-Host "The Owner is $GroupOwner"
+			If ($null -eq $GroupOwner)
+			{
+				Write-Warning "The Distribution Group, '$($Group.DisplayName)' did not return an Owner"
+			}
+			Else
+			{
+				Write-Host "Finding $GroupOwner in Active Directory"
+				$AddOwner = Get-ADUser -Filter * | Where-Object { $_.userprincipalname -eq "$GroupOwner" }
+				If ($null -eq $AddOwner)
+				{
+					Write-Warning "$GroupOwner was not found in Active Directory and could not be added as an Owner for the group, '$($yGroup.DisplayName)'"
+				}
+				Else
+				{
+					Write-Host "The user, '$GroupOwner' was found in Active Directory. Adding as owner to the Distribution Group, '$($Group.DisplayName)'"
+					Set-ADGroup -identity $Group.DisplayName -ManagedBy $AddOwner.DistinguishedName
+				}
+			}
+			
 			If ($DomainMoveDistributionGroupsToOU -eq $true)
 			{
 				#Grab Distribution Group domain based on external email address
@@ -414,9 +442,7 @@ function Sync-Office365ToADDS
 					Write-Host "Moving $($Group.DisplayName) to $DynOU"
 					Get-ADGroup -identity $Group.DisplayName | Move-ADObject -TargetPath $DynOU
 				}
-				
 			}
-			
 			$GroupPresent = $null
 		}
 	}
@@ -471,7 +497,7 @@ function Sync-Office365ToADDS
 				
 			}
 			
-			Write-Host "Getting Owner of group, '$($MailEnabledSecurityGroup.DisplayName)'"
+			Write-Host "Getting Owner of Mail-Enabled Security Group, '$($MailEnabledSecurityGroup.DisplayName)'"
 			$MailEnabledSecurityGroupOwner = Get-MsolGroup -ObjectId $MailEnabledSecurityGroup.ExternalDirectoryObjectId | Select-Object @{ n = "ManagedBy"; e = { (Get-MsolUser -ObjectId (Get-MsolGroup -ObjectId $_.ObjectId).ManagedBy).UserPrincipalName } } | Select-Object -ExpandProperty ManagedBy
 			Write-Host "The Owner is $MailEnabledSecurityGroupOwner"
 			If ($null -eq $MailEnabledSecurityGroupOwner)
@@ -484,11 +510,11 @@ function Sync-Office365ToADDS
 				$AddOwner = Get-ADUser -Filter * | Where-Object { $_.userprincipalname -eq "$MailEnabledSecurityGroupOwner" }
 				If ($null -eq $AddOwner)
 				{
-					Write-Warning "$MailEnabledSecurityGroupOwner was not found in Active Directory and could not be added as an Owner for the group, '$($MailEnabledSecurityGroup.DisplayName)'"
+					Write-Warning "$MailEnabledSecurityGroupOwner was not found in Active Directory and could not be added as an Owner for the Mail-Enabled Security Group, '$($MailEnabledSecurityGroup.DisplayName)'"
 				}
 				Else
 				{
-					Write-Host "The user, '$MailEnabledSecurityGroupOwner' was found in Active Directory. Adding as owner to the group, '$($MailEnabledSecurityGroup.DisplayName)'"
+					Write-Host "The user, '$MailEnabledSecurityGroupOwner' was found in Active Directory. Adding as owner to the Mail-Enabled Security Group, '$($MailEnabledSecurityGroup.DisplayName)'"
 					Set-ADGroup -identity $MailEnabledSecurityGroup.DisplayName -ManagedBy $AddOwner.DistinguishedName
 				}
 			}
@@ -510,16 +536,13 @@ function Sync-Office365ToADDS
 					Write-Host "Moving $($MailEnabledSecurityGroup.DisplayName) to $DynOU"
 					Get-ADGroup -identity $MailEnabledSecurityGroup.DisplayName | Move-ADObject -TargetPath $DynOU
 				}
-				
 			}
-			
 			$GroupPresent = $null
 		}
 	}
 	
 	If ($SyncSecurityGroups -eq $true)
 	{
-		
 		
 		Write-Host "################################" -ForegroundColor Green
 		Write-Host "#       SECURITY GROUPS        #" -ForegroundColor Green
@@ -531,7 +554,7 @@ function Sync-Office365ToADDS
 		foreach ($SecurityGroup in $SecurityGroups)
 		{
 			
-			Write-Host "Working on the security group, '$($SecurityGroup.DisplayName)'"
+			Write-Host "Working on the Security Group, '$($SecurityGroup.DisplayName)'"
 			
 			Write-Host "Checking to see if the Mail-Enabled Security Group, '$($SecurityGroup.DisplayName) is already present in Active Directory'"
 			Try { Get-ADGroup -Identity $SecurityGroup.DisplayName }
@@ -568,7 +591,7 @@ function Sync-Office365ToADDS
 				}
 				
 			}
-			Write-Host "Getting Owner of group, '$($SecurityGroup.DisplayName)'"
+			Write-Host "Getting Owner of Security Group, '$($SecurityGroup.DisplayName)'"
 			$SecurityGroupOwner = Get-AzureADGroupOwner -ObjectId $SecurityGroup.ObjectID | Select-Object -ExpandProperty UserPrincipalName
 			Write-Host "The Owner is $SecurityGroupOwner"
 			If ($null -eq $SecurityGroupOwner)
@@ -581,15 +604,14 @@ function Sync-Office365ToADDS
 				$AddOwner = Get-ADUser -Filter * | Where-Object { $_.userprincipalname -eq "$SecurityGroupOwner" }
 				If ($null -eq $AddOwner)
 				{
-					Write-Warning "$SecurityGroupOwner was not found in Active Directory and could not be added as an Owner for the group, '$($SecurityGroup.DisplayName)'"
+					Write-Warning "$SecurityGroupOwner was not found in Active Directory and could not be added as an Owner for the Security Group, '$($SecurityGroup.DisplayName)'"
 				}
 				Else
 				{
-					Write-Host "The user, '$SecurityGroupOwner' was found in Active Directory. Adding as owner to the group, '$($SecurityGroup.DisplayName)'"
+					Write-Host "The user, '$SecurityGroupOwner' was found in Active Directory. Adding as owner to the Security Group, '$($SecurityGroup.DisplayName)'"
 					Set-ADGroup -identity $SecurityGroup.DisplayName -ManagedBy $AddOwner.DistinguishedName
 				}
 			}
-			
 		}
 	}
 }
