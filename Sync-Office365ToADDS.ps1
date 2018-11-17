@@ -1,6 +1,7 @@
 <#	
     #TODO: Add managed by for groups
 	#TODO: Check for member, if not write warning
+    #check if azuread is connected or msonline, if so skip
 
 
 	.NOTES
@@ -52,6 +53,7 @@
 		- Primary SmtpAddress 
 		- Description
 		- Members
+		- Group Owner (Managed By)
 
 		SECURITY GROUP ATTRIBUTES IT WILL COPY OVER
 		- Name
@@ -59,6 +61,7 @@
 		- Primary SmtpAddress 
 		- Description
 		- Members
+		- Group Owner (Managed By)
 
 	.PARAMETER SyncUsers
 		[switch] Syncs Office 365 Users to ADDS
@@ -111,38 +114,34 @@
 #>
 function Sync-Office365ToADDS
 {
+	[CmdletBinding()]
 	Param (
-		[Parameter(ParameterSetName = 'SyncUsers')]
 		[switch]$SyncUsers,
-		[Parameter(ParameterSetName = 'SyncUsers', Mandatory = $false)]
 		[string]$UsersOU,
-		[Parameter(ParameterSetName = 'SyncUsers', Mandatory = $false)]
 		[switch]$DomainMoveUsersToOU,
-		[Parameter(ParameterSetName = 'SyncUsers', Mandatory = $true)]
 		[string]$PasswordForAllUsers,
-		[Parameter(ParameterSetName = 'SyncContacts')]
 		[switch]$SyncContacts,
-		[Parameter(ParameterSetName = 'SyncContacts', Mandatory = $false)]
 		[string]$ContactsOU,
-		[Parameter(ParameterSetName = 'SyncContacts', Mandatory = $false)]
 		[switch]$DomainMoveContactsToOU,
-		[Parameter(ParameterSetName = 'SyncDistributionGroups')]
 		[switch]$SyncDistributionGroups,
-		[Parameter(ParameterSetName = 'SyncDistributionGroups', Mandatory = $false)]
 		[string]$DistributionGroupsOU,
-		[Parameter(ParameterSetName = 'SyncDistributionGroups', Mandatory = $false)]
 		[switch]$DomainMoveDistributionGroupsToOU,
-		[Parameter(ParameterSetName = 'SyncMailEnabledSecurityGroups')]
 		[switch]$SyncMailEnabledSecurityGroups,
-		[Parameter(ParameterSetName = 'SyncMailEnabledSecurityGroups', Mandatory = $false)]
 		[string]$MailEnabledSecurityGroupsOU,
-		[Parameter(ParameterSetName = 'SyncMailEnabledSecurityGroups', Mandatory = $false)]
 		[switch]$DomainMoveMailEnabledSecurityGroupsToOU,
-		[Parameter(ParameterSetName = 'SyncSecurityGroups')]
 		[switch]$SyncSecurityGroups,
-		[Parameter(ParameterSetName = 'SyncSecurityGroups', Mandatory = $false)]
 		[string]$SecurityGroupsOU
 	)
+	If ($SyncUsers -eq $True)
+	{
+		Do
+		{
+			$PasswordForAllUsers = Read-Host -Prompt "Please enter a password that will be set for all users synced from Office 365. This password will be converted to secure.string"
+			
+		}
+		Until (($PasswordForAllUsers).Length -gt 0)
+	}
+	
 	Write-Host "Checking to see if MSOnline Module is present" -ForegroundColor Green
 	$MSOnlineCheck = get-module | Where-object { $_.name -like "*msonline*" }
 	If ($Null -eq $MSOnlineCheck)
@@ -153,6 +152,18 @@ function Sync-Office365ToADDS
 	}
 	Write-Host "Importing MSOnline Module"
 	Import-Module MSOnline
+	
+	Write-Host "Checking to see if AzureAD Module is present" -ForegroundColor Green
+	$MSOnlineCheck = get-module | Where-object { $_.name -like "*azuread*" }
+	If ($Null -eq $MSOnlineCheck)
+	{
+		Write-Warning "AzureAd module is not present, attempting to install it"
+		Install-Module AzureAd -Force
+		
+	}
+	Write-Host "Importing AzureAd Module"
+	Import-Module AzureAd
+	
 	function Connect-O365
 	{
 		$UserCredential = Get-Credential
@@ -161,8 +172,11 @@ function Sync-Office365ToADDS
 		Connect-MsolService -Credential $UserCredential
 	}
 	
-	
+	Write-Host "Connecting to MSOnline" -ForegroundColor DarkMagenta
 	#Connect-O365
+	
+	Write-Host "Connecting to AzureAd"
+	#Connect-AzureAD
 	
 	Write-Host "###############################" -ForegroundColor Green
 	Write-Host "#         DOMAINS             #" -ForegroundColor Green
@@ -457,6 +471,28 @@ function Sync-Office365ToADDS
 				
 			}
 			
+			Write-Host "Getting Owner of group, '$($MailEnabledSecurityGroup.DisplayName)'"
+			$MailEnabledSecurityGroupOwner = Get-MsolGroup -ObjectId $MailEnabledSecurityGroup.ExternalDirectoryObjectId | Select-Object @{ n = "ManagedBy"; e = { (Get-MsolUser -ObjectId (Get-MsolGroup -ObjectId $_.ObjectId).ManagedBy).UserPrincipalName } } | Select-Object -ExpandProperty ManagedBy
+			Write-Host "The Owner is $MailEnabledSecurityGroupOwner"
+			If ($null -eq $MailEnabledSecurityGroupOwner)
+			{
+				Write-Warning "The Mail-Enabled Security Group, '$($MailEnabledSecurityGroup.DisplayName)' did not return an Owner"
+			}
+			Else
+			{
+				Write-Host "Finding $MailEnabledSecurityGroupOwner in Active Directory"
+				$AddOwner = Get-ADUser -Filter * | Where-Object { $_.userprincipalname -eq "$MailEnabledSecurityGroupOwner" }
+				If ($null -eq $AddOwner)
+				{
+					Write-Warning "$MailEnabledSecurityGroupOwner was not found in Active Directory and could not be added as an Owner for the group, '$($MailEnabledSecurityGroup.DisplayName)'"
+				}
+				Else
+				{
+					Write-Host "The user, '$MailEnabledSecurityGroupOwner' was found in Active Directory. Adding as owner to the group, '$($MailEnabledSecurityGroup.DisplayName)'"
+					Set-ADGroup -identity $MailEnabledSecurityGroup.DisplayName -ManagedBy $AddOwner.DistinguishedName
+				}
+			}
+			
 			If ($DomainMoveMailEnabledSecurityGroupsToOU -eq $true)
 			{
 				#Grab Mail Enabled Security Group domain based on external email address
@@ -532,6 +568,28 @@ function Sync-Office365ToADDS
 				}
 				
 			}
+			Write-Host "Getting Owner of group, '$($SecurityGroup.DisplayName)'"
+			$SecurityGroupOwner = Get-AzureADGroupOwner -ObjectId $SecurityGroup.ObjectID | Select-Object -ExpandProperty UserPrincipalName
+			Write-Host "The Owner is $SecurityGroupOwner"
+			If ($null -eq $SecurityGroupOwner)
+			{
+				Write-Warning "The Security Group, '$($SecurityGroup.DisplayName)' did not return an Owner"
+			}
+			Else
+			{
+				Write-Host "Finding $SecurityGroupOwner in Active Directory"
+				$AddOwner = Get-ADUser -Filter * | Where-Object { $_.userprincipalname -eq "$SecurityGroupOwner" }
+				If ($null -eq $AddOwner)
+				{
+					Write-Warning "$SecurityGroupOwner was not found in Active Directory and could not be added as an Owner for the group, '$($SecurityGroup.DisplayName)'"
+				}
+				Else
+				{
+					Write-Host "The user, '$SecurityGroupOwner' was found in Active Directory. Adding as owner to the group, '$($SecurityGroup.DisplayName)'"
+					Set-ADGroup -identity $SecurityGroup.DisplayName -ManagedBy $AddOwner.DistinguishedName
+				}
+			}
+			
 		}
 	}
 }
