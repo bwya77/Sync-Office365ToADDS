@@ -9,11 +9,15 @@
 		MSONLINE Module (Install-Module MSOnline)
 			*Will install it automatically if not present
 	.DESCRIPTION
-		The PowerShell function will connect to your Office 365 and can re-create your Users, Groups, and Contacts in Active Directory. 
-		This is extremly helpful if you are looking to change your identity source from Office 365 to Active Directory and then have Active Directory sync up to Office 365.
+		The PowerShell function will connect to your Office 365 / AzureAD and can re-create your Users, Groups, and Contacts in Active Directory. 
+		This is extremly helpful if you are looking to change your identity source from Office 365 (AzureAD) to Active Directory and then have Active Directory sync up to Office 365.
 
-		This will not copy every attribute from your users over. It will copy what is needed for AADConnect to then SMTP match your Office 365 users to your on-premise users. 
-		This will also re-create Distribution, Security, and Mail-Enabled Security Groups and also populate the membership. Distribution and Mail-Enabled security groups will SMTP match when you configure AADConnect.
+		This will also re-create Distribution, Security, and Mail-Enabled Security Groups and also populate the membership and owner (managed by). Distribution and Mail-Enabled security groups will SMTP match when you configure AADConnect.
+
+		Attributes:
+		If Azure AD finds an object where the attribute values are the same for an object coming from Connect (Active Directory) and that it is already present in Azure AD, then the object in Azure AD is taken over by Connect. 
+		The previously cloud-managed object is flagged as on-premises managed. All attributes in Azure AD with a value in on-premises AD are overwritten with the on-premises value. The exception is when an attribute has a NULL value on-premises. 
+		In this case, the value in Azure AD remains, but you can still only change it on-premises to something else.
 
 		USER ATTRIBUTES IT WILL COPY OVER
 		- First Name
@@ -137,8 +141,7 @@ function Sync-Office365ToADDS
 		Connect-MsolService -Credential $UserCredential
 	}
 	
-	
-	If ($SyncUsers -eq $True)
+	If (($SyncUsers -eq $True) -and (($PasswordForAllUsers).Length -lt 1))
 	{
 		Do
 		{
