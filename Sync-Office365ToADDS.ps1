@@ -151,7 +151,7 @@ function Sync-Office365ToADDS
 		Until (($PasswordForAllUsers).Length -gt 0)
 	}
 	
-	
+	Write-Host "Checking to see if already connected to AzureAD"
 	$AzureConnect = Get-AzureADTenantDetail -ErrorAction SilentlyContinue
 	If ($AzureConnect -eq $null)
 	{
@@ -269,7 +269,7 @@ function Sync-Office365ToADDS
 				Write-Host "Moving the user, '$($User.DisplayName)' to the OU at $UsersOU"
 				Move-ADObject -Identity $ADUser.ObjectGuid -TargetPath $UsersOU
 			}
-			If ($DomainMoveUsersOU -eq $true)
+			If ($DomainMoveUsersToOU -eq $true)
 			{
 				#Grab users UPN Domain
 				Write-Host "Finding the UPN Domain for the user, '$($User.DisplayName)'"
