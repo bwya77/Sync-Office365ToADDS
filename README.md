@@ -8,7 +8,7 @@ Copies Office 365 (AzureAD) objects down to ADDS.
 - User Principal Name
 - Email Address
 - Proxy Addresses
--   SMTP
+--   SMTP
 -   SPO
 -   SIP
 -   EUM
