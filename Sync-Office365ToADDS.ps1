@@ -236,6 +236,15 @@ function Sync-Office365ToADDS
 				$PrimEMail = Get-MSOLUser -UserPrincipalName $user.UserPrincipalName | Select-Object -ExpandProperty ProxyAddresses | Where-Object { $_ -cmatch '^SMTP:' }
 				#Var for all the alias e-mail addresses
 				$AliasEMails = Get-MSOLUser -UserPrincipalName $user.UserPrincipalName | Select-Object -ExpandProperty ProxyAddresses | Where-Object { $_ -cmatch 'smtp:' }
+				#Var for all the SPO e-mail addresses
+				$SPOs = Get-Mailbox -identity $user.UserPrincipalName | Select-Object -ExpandProperty EmailAddresses | Where-Object { $_ -cmatch '^SPO:' }
+				#Var for all the EUM e-mail addresses
+				$CEUMs = Get-Mailbox -identity $user.UserPrincipalName  | Select-Object -ExpandProperty EmailAddresses | Where-Object { $_ -cmatch '^EUM:' }
+				#Var for all the lowercase eum e-mail addresses
+				$LEUMs = Get-Mailbox -identity $user.UserPrincipalName  | Select-Object -ExpandProperty EmailAddresses | Where-Object { $_ -cmatch 'eum:' }
+				#Var for all the SIP e-mail addresses
+				$SIPs = Get-Mailbox -identity $user.UserPrincipalName  | Select-Object -ExpandProperty EmailAddresses | Where-Object { $_ -cmatch '^SIP:' }
+				
 				
 				$SamAccountName = $user.UserPrincipalName.split("@") | Select-Object -First 1
 				
@@ -256,6 +265,30 @@ function Sync-Office365ToADDS
 				{
 					Write-Host "Adding the alias $AliasEMail for user, '$($User.DisplayName)'"
 					$ADUser | Set-ADUser -Add @{ Proxyaddresses = "$AliasEMail" }
+				}
+				#Add all the proxy SPO addresses to the user
+				foreach ($SPO in $SPOs)
+				{
+					Write-Host "Adding the SPO address $SPO for user, '$($User.DisplayName)'"
+					$ADUser | Set-ADUser -Add @{ Proxyaddresses = "$SPO" }
+				}
+				#Add all the proxy EUM addresses to the user
+				foreach ($CEUM in $CEUMs)
+				{
+					Write-Host "Adding the EUM address, '$CEUM' for user, '$($User.DisplayName)'"
+					$ADUser | Set-ADUser -Add @{ Proxyaddresses = "$CEUM" }
+				}
+				#Add all the proxy EUM addresses to the user
+				foreach ($LEUM in $LEUMs)
+				{
+					Write-Host "Adding the EUM address, '$LEUM' for user, '$($User.DisplayName)'"
+					$ADUser | Set-ADUser -Add @{ Proxyaddresses = "$LEUM" }
+				}
+				#Add all the proxy SIP addresses to the user
+				foreach ($SIP in $SIPs)
+				{
+					Write-Host "Adding the SIP address, '$SIP' for user, '$($User.DisplayName)'"
+					$ADUser | Set-ADUser -Add @{ Proxyaddresses = "$SIP" }
 				}
 				
 				#Set the primary e-mail address
