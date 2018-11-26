@@ -1,7 +1,7 @@
 # Sync-Office365ToADDS
 Copies Office 365 (AzureAD) objects down to ADDS. 
 
-Users
+## Users
 - First Name
 - Last Name
 - Display Name
@@ -18,7 +18,7 @@ Users
 - City
 - Office Phone (telephone number)
 
-Contacts
+## Contacts
 Display Name
 External Email
 Proxy Addresses
