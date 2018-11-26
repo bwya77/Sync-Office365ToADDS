@@ -17,7 +17,6 @@ Copies Office 365 (AzureAD) objects down to ADDS.
 - Department
 - City
 - Office Phone (telephone number)
-
 ## Contacts
 - Display Name
 - External Email
@@ -35,13 +34,13 @@ Copies Office 365 (AzureAD) objects down to ADDS.
 - Name
 - Display Name
 - Primary SmtpAddress
-Description
-Members
-Group Owner (Managed By)
-Security Groups
-Name
-Display Name
-Primary SmtpAddress
-Description
-Members
-Group Owner (Managed By)
+- Description
+- Members
+- Group Owner (Managed By)
+## Security Groups
+- Name
+- Display Name
+- Primary SmtpAddress
+- Description
+- Members
+- Group Owner (Managed By)
