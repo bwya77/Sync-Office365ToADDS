@@ -1,6 +1,6 @@
 # Sync-Office365ToADDS
 Copies Office 365 (AzureAD) objects down to ADDS. 
-## Users
+### Users
 - First Name
 - Last Name
 - Display Name
@@ -16,27 +16,27 @@ Copies Office 365 (AzureAD) objects down to ADDS.
 - Department
 - City
 - Office Phone (telephone number)
-## Contacts
+### Contacts
 - Display Name
 - External Email
 - Proxy Addresses
 - First Name
 - Last Name
-## Distribution Groups
+### Distribution Groups
 - Name
 - Display Name
 - Primary SmtpAddress
 - Description
 - Members
 - Group Owner (Managed By)
-## Mail-Enabled Security Groups
+### Mail-Enabled Security Groups
 - Name
 - Display Name
 - Primary SmtpAddress
 - Description
 - Members
 - Group Owner (Managed By)
-## Security Groups
+### Security Groups
 - Name
 - Display Name
 - Primary SmtpAddress
