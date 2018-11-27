@@ -26,6 +26,10 @@
 		- User Principal Name
 		- Email Address
 		- Proxy Addresses 
+			- SMTP
+			- SPO
+			- SIP
+			- EUM
 		- Office
 		- Title
 		- Department
@@ -43,6 +47,7 @@
 		- Name
 		- Display Name
 		- Primary SmtpAddress 
+		- Proxyaddresses
 		- Description
 		- Members
 		- Group Owner (Managed By)
@@ -459,6 +464,12 @@ function Sync-Office365ToADDS
 					Write-Host "The user, '$GroupOwner' was found in Active Directory. Adding as owner to the Distribution Group, '$($Group.DisplayName)'"
 					Set-ADGroup -identity $Group.DisplayName -ManagedBy $AddOwner.DistinguishedName
 				}
+			}
+			$AliasEMailGroups = $Group.EmailAddresses
+			foreach ($AliasEMailGroup in $AliasEMailGroups)
+			{
+				Write-Host "Adding the alias $AliasEMailGroup for Distribution Group, '$($Group.DisplayName)'"
+				Set-ADGroup -identity $Group.DisplayName -Add @{ Proxyaddresses = "$AliasEMailGroup" }
 			}
 			
 			If ($DomainMoveDistributionGroupsToOU -eq $true)
