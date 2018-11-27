@@ -26,6 +26,7 @@ Copies Office 365 (AzureAD) objects down to ADDS.
 - Name
 - Display Name
 - Primary SmtpAddress
+- Proxyaddresses
 - Description
 - Members
 - Group Owner (Managed By)
