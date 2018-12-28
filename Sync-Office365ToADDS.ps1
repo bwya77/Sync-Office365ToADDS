@@ -77,7 +77,7 @@
 	.PARAMETER PasswordForAllUsers
 		[string] Required if you use the SyncUsers switch. Specifies the password that will be set for all users that are created. Converts the plain text string to secure.string
 
-	PARAMETER DomainMoveUsersToOU
+	.PARAMETER DomainMoveUsersToOU
 		[switch] Optional. Will move users to an OU that matches the domain name in their UPN. If the UPN is thelazyadministrator.com it will find an OU with the name "thelazyadministrator" and move the user there. If the OU is not present it will keep the user in the default Users OU
 
 	.PARAMETER SyncContacts
